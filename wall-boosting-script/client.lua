@@ -34,7 +34,7 @@ CreateThread(function()
     UpdateBoosterState()
     NotifyBoosterState()
     CheckIfCanClimb()
-    Boost()
+    Climb()
 
     end
 end)
@@ -112,8 +112,6 @@ function Climb() -- Climb, if player wants and booster nearby
     end
 end
 
---DEBUG COMMANDS
-/*
 RegisterCommand('playAnim', function(source, args)
     RequestAnimDict(args[1])
     Wait(100)
@@ -123,7 +121,6 @@ end)
 RegisterCommand('stopAnim', function(source, args)
     ClearPedTasksImmediately(pp)
 end)
-*/
 
 function StopAnimations()
     ClearPedTasks(pp)
