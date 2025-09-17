@@ -5,9 +5,8 @@ local boosting_dest = nil
 local prev_wants_to_boost = false
 local active_boosters = {}
 local nearest_booster = nil
-local anim_booster = {'anim@scripted@cbr5@ig3_drill_box@pattern_03@lockbox_01@male@', 'action'}
+local anim_booster = {'export@boosting_prepare', 'boosting_prepare'}
 local anim_climber1 = {'anim@veh@plane@avenger@rhs@common@enter_exit', 'climb_up_no_door'}
-local anim_climber2 = {'move_climb', 'standclimbup_295_low'}
 
 CreateThread(function()
     while true do
@@ -33,6 +32,9 @@ CreateThread(function()
         end
     UpdateBoosterState()
     NotifyBoosterState()
+    if is_wants_to_boost then
+        ForcePedMotionState(pp, -294553821, true, 1, 1)
+    end
     CheckIfCanClimb()
     Climb()
 
@@ -44,6 +46,8 @@ function UpdateBoosterState()
         
         if is_wants_to_boost then
             StopAnimations()
+            FreezeEntityPosition(pp, false)
+            SetEntityCollision(pp, true, true)
             print('Not ready to boost anymore')
             is_wants_to_boost = false
         end
@@ -57,6 +61,9 @@ function UpdateBoosterState()
                 else
                     SetEntityHeading(pp, GetEntityHeading(pp) - 90)
                 end
+                FreezeEntityPosition(pp, true)
+                SetEntityCollision(pp, false, false)
+                SetEntityCoordsNoOffset(pp, GetEntityCoords(pp) - GetEntityForwardVector(pp) * 0.15 - vector3(0,0,0.08), false, false, false)
                 PlayBoosterAnim()
                 boosting_dest = vector3(boosting_coord.x, boosting_coord.y, groundZ - 0.5)
                 print('Is ready to boost')
@@ -66,6 +73,14 @@ function UpdateBoosterState()
     end
 end
 
+function PlayBoosterAnim() -- Play anim for booster
+    RequestAnimDict(anim_booster[1])
+    while not HasAnimDictLoaded(anim_booster[1]) do
+        Wait(1)
+    end
+    TaskPlayAnim(pp, anim_booster[1], anim_booster[2], 1.0, 1.0, -1, 2, 0.0, true, true, false)
+end
+
 function NotifyBoosterState() --signalizing if booster state changed
     if prev_wants_to_boost ~= is_wants_to_boost then 
         TriggerServerEvent('boostingService:booster_state_changed', boosting_dest)
@@ -73,10 +88,6 @@ function NotifyBoosterState() --signalizing if booster state changed
     end
 end
 
-RegisterNetEvent('boostingService:sync_boosters') -- sync active boosters
-AddEventHandler('boostingService:sync_boosters', function(new_active_boosters)
-    active_boosters = new_active_boosters;
-end)
 
 function CheckIfCanClimb() -- Check if can climb with the nearest booster
     nearest_booster = nil
@@ -94,53 +105,64 @@ function Climb() -- Climb, if player wants and booster nearby
         FreezeEntityPosition(pp,true)
         booster_ped = GetPlayerPed(GetPlayerFromServerId(nearest_booster))
         booster_ped_forward_vec = GetEntityForwardVector(booster_ped)
-        start_position = GetEntityCoords(booster_ped) + booster_ped_forward_vec
+        start_position = GetEntityCoords(booster_ped) + booster_ped_forward_vec * 0.8 + vector3(booster_ped_forward_vec.y, -booster_ped_forward_vec.x, booster_ped_forward_vec.z) * 0.2
         start_heading = GetEntityHeading(booster_ped) + 180
-        SetEntityCoords(pp, start_position)
+        SetEntityCoordsNoOffset(pp, start_position, true, false, false)
         SetEntityHeading(pp, start_heading)
-        PlayClimberAnim1()
-        Wait(1500)
-        SetEntityCoordsNoOffset(pp, active_boosters[nearest_booster] + booster_ped_forward_vec * 0.4, true, true, true)
-        PlayClimberAnim2()
-        for time = 1, 450, 50 do
-            Wait(time)
-            SetEntityCoordsNoOffset(pp, active_boosters[nearest_booster] + booster_ped_forward_vec * 0.4 + vector3(0,0, 1.5 / 450 * time), true, true, true)
+        PlayClimberAnim()
+        TriggerServerEvent('boostingService:started_climbing', active_boosters[nearest_booster])
+        for time = 1, 50, 1 do
+            Wait(5)
+            SetEntityCoordsNoOffset(pp, GetEntityCoords(pp) + vector3(0, 0, 0.6 / 50), true, false, false)
+        end
+        SetEntityCoordsNoOffset(pp, active_boosters[nearest_booster] + booster_ped_forward_vec * 0.6, true, false, false)
+        for time = 1, 50, 1 do
+            Wait(8)
+            SetEntityCoordsNoOffset(pp, GetEntityCoords(pp) + vector3(0, 0, 0.8 / 50), true, false, false)
         end
         SetEntityCoordsNoOffset(pp, active_boosters[nearest_booster] + vector3(0,0,1.5), true, true, true)
-        Wait(500)
+        ClearPedTasksImmediately(pp)
         FreezeEntityPosition(pp,false)
     end
 end
 
+function PlayClimberAnim() -- Play intro anim for climber
+    RequestAnimDict(anim_climber1[1])
+    while not HasAnimDictLoaded(anim_climber1[1]) do
+        Wait(1)
+    end
+    TaskPlayAnim(pp, anim_climber1[1], anim_climber1[2], 4.0, 4.0, -1, 2, 0.0, true, true, false)
+end
+
+RegisterNetEvent('boostingService:sync_boosters') -- sync active boosters
+AddEventHandler('boostingService:sync_boosters', function(new_active_boosters)
+    active_boosters = new_active_boosters;
+end)
+
+RegisterNetEvent('boostingService:sync_climber') -- sync active climber
+AddEventHandler('boostingService:sync_climber', function(climberId, destination)
+    local climberPed = GetPlayerPed(GetPlayerFromServerId(climberId))
+    local forward_vec = GetEntityForwardVector(climberPed)
+    destination = destination - forward_vec + vector3(0, 0, 1.5)
+    if climberPed ~= pp then
+        for time = 1, 50, 1 do
+            Wait(15)
+            local coords = GetEntityCoords(climberPed)
+            SetEntityCoordsNoOffset(climberPed, coords + (destination - coords) / 50, true, false, false)
+        end
+    end
+end)
+
+/*
 RegisterCommand('playAnim', function(source, args)
     RequestAnimDict(args[1])
     Wait(100)
-    TaskPlayAnim(pp, args[1], args[2], 1.0, 1.0, -1, 1, 0.0, false, false, false)
+    TaskPlayAnim(pp, args[1], args[2], 4.0, 4.0, -1, 1, 0.0, false, false, false)
 end)
 
 RegisterCommand('stopAnim', function(source, args)
     ClearPedTasksImmediately(pp)
+    SetEntityCollision(pp, true, true)
+    FreezeEntityPosition(pp, false)
 end)
-
-function StopAnimations()
-    ClearPedTasks(pp)
-end
-
-function PlayBoosterAnim() -- Play anim for booster
-    RequestAnimDict(anim_booster[1])
-    Wait(100)
-    TaskPlayAnim(pp, anim_booster[1], anim_booster[2], 1.0, 1.0, -1, 1, 1.0, false, false, false)
-end
-
-function PlayClimberAnim1() -- Play intro anim for climber
-    RequestAnimDict(anim_climber1[1])
-    Wait(100)
-    TaskPlayAnim(pp, anim_climber1[1], anim_climber1[2], 1.0, 1.0, 1500, 0, 0.0, false, false, false)
-end
-
-function PlayClimberAnim2() -- Play outro anim for climber
-    RequestAnimDict(anim_climber2[1])
-    Wait(100)
-    TaskPlayAnim(pp, anim_climber2[1], anim_climber2[2], 1.0, 1.0, 2500, 0, 0.0, false, false, false)
-end
-
+*/

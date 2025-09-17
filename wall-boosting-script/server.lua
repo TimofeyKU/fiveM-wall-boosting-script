@@ -22,3 +22,8 @@ AddEventHandler('playerDropped', function (reason, resourceName, clientDropReaso
         Citizen.Trace('boostingService:: Player' ..GetPlayerName(source).. 'was deleted from active boosters because of dropping.')
     end
 end)
+
+RegisterServerEvent('boostingService:started_climbing')
+AddEventHandler('boostingService:started_climbing', function(destination)
+    TriggerClientEvent('boostingService:sync_climber', -1, source, destination)
+end)
